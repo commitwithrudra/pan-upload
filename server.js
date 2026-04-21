@@ -11,7 +11,7 @@ if (!fs.existsSync("uploads")) {
 }
 
 app.get("/", (req, res) => {
-  res.send("Server is running ✅");
+  res.send("Server is running");
 });
 
 app.post("/upload-to-drive", async (req, res) => {
