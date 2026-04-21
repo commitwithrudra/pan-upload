@@ -30,6 +30,9 @@ async function downloadFile(file_url, fileName) {
     responseType: "stream",
   });
 
+  console.log("Download status:", response.status);
+  console.log("File size:", response.data.length);
+
   const path = "./uploads/" + fileName;
   const writer = fs.createWriteStream(path);
 
