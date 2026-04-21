@@ -16,7 +16,7 @@ const auth = new google.auth.GoogleAuth({
 const drive = google.drive({ version: "v3", auth });
 
 // 📌 Replace with your actual folder ID
-const FOLDER_ID = "YOUR_FOLDER_ID";
+const FOLDER_ID = "1mFDnfbbSYRXJFuHeHKx6wiax2J2lnrEw";
 
 // 🚀 Main API
 app.post("/upload-to-drive", async (req, res) => {
