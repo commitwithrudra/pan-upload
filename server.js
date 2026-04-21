@@ -8,7 +8,7 @@ const mime = require("mime-types");
 const app = express();
 app.use(express.json());
 
-const upload = multer({ dest: "uploads/" });
+// const upload = multer({ dest: "uploads/" });
 
 // Google Auth
 const auth = new google.auth.GoogleAuth({
