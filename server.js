@@ -21,6 +21,13 @@ function isPanFile(fileName) {
   return fileName.toLowerCase().includes("pan");
 }
 
+app.post("/upload-to-drive", upload.single("file"), async (req, res) => {
+  console.log("BODY:", req.body);   // 👈 ADD THIS
+  console.log("FILE:", req.file);   // 👈 ADD THIS
+
+  res.send("Received"); // temporary
+});
+
 // 📤 Upload to Drive
 async function uploadToDrive(filePath, fileName) {
   const response = await drive.files.create({
