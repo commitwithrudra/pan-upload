@@ -1,14 +1,16 @@
 const express = require("express");
-const axios = require("axios");
+const multer = require("multer");
 const fs = require("fs");
-const path = require("path");
+const axios = require("axios");
 const { google } = require("googleapis");
 const mime = require("mime-types");
 
 const app = express();
 app.use(express.json());
 
-// 🔐 Google Drive Auth
+const upload = multer({ dest: "uploads/" });
+
+// Google Auth
 const auth = new google.auth.GoogleAuth({
   keyFile: "credentials.json",
   scopes: ["https://www.googleapis.com/auth/drive"],
@@ -16,19 +18,28 @@ const auth = new google.auth.GoogleAuth({
 
 const drive = google.drive({ version: "v3", auth });
 
-// 🧠 PAN validation
-function isPanFile(fileName) {
-  return fileName.toLowerCase().includes("pan");
+// Download file from ERPNext
+async function downloadFile(file_url, fileName) {
+  const fullUrl = "https://lvsmd.m.frappe.cloud" + file_url;
+
+  const response = await axios({
+    url: fullUrl,
+    method: "GET",
+    responseType: "stream",
+  });
+
+  const path = "./uploads/" + fileName;
+  const writer = fs.createWriteStream(path);
+
+  response.data.pipe(writer);
+
+  return new Promise((resolve, reject) => {
+    writer.on("finish", () => resolve(path));
+    writer.on("error", reject);
+  });
 }
 
-app.post("/upload-to-drive", upload.single("file"), async (req, res) => {
-  console.log("BODY:", req.body);   // 👈 ADD THIS
-  console.log("FILE:", req.file);   // 👈 ADD THIS
-
-  res.send("Received"); // temporary
-});
-
-// 📤 Upload to Drive
+// Upload to Drive
 async function uploadToDrive(filePath, fileName) {
   const response = await drive.files.create({
     requestBody: {
@@ -42,60 +53,29 @@ async function uploadToDrive(filePath, fileName) {
   });
   return response.data;
 }
-app.get("/", (req, res) => {
-  res.send("PAN Upload API is running 🚀");
-});
-// 🚀 API (ERPNext webhook)
+
+// API
 app.post("/upload-to-drive", async (req, res) => {
   try {
-    let file_url = req.body.pan_card;
+    console.log("BODY:", req.body);
 
-    if (!file_url) {
-      return res.status(400).json({ error: "No file URL received" });
+    const { file_url, file_name } = req.body;
+
+    if (!file_name.toLowerCase().includes("pan")) {
+      return res.status(400).send("Not PAN file");
     }
 
-    // 🔥 Fix for ERPNext private URL
-    if (file_url.startsWith("/")) {
-      file_url = "https://lvsmd.m.frappe.cloud" + file_url;
-    }
+    const filePath = await downloadFile(file_url, file_name);
 
-    const fileName = file_url.split("/").pop();
+    const result = await uploadToDrive(filePath, file_name);
 
-    // ✅ PAN validation
-    if (!isPanFile(fileName)) {
-      return res.status(400).json({ error: "Not a PAN file" });
-    }
+    fs.unlinkSync(filePath);
 
-    const filePath = path.join(__dirname, fileName);
-
-    // 📥 Download file
-    const response = await axios({
-      url: file_url,
-      method: "GET",
-      responseType: "stream",
-    });
-
-    const writer = fs.createWriteStream(filePath);
-    response.data.pipe(writer);
-
-    writer.on("finish", async () => {
-      const result = await uploadToDrive(filePath, fileName);
-
-      fs.unlinkSync(filePath);
-
-      res.json({
-        message: "Uploaded successfully",
-        fileId: result.id,
-      });
-    });
-
+    res.send("Uploaded to Drive");
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: err.message });
+    res.status(500).send(err.message);
   }
 });
 
-// 🚀 Start server
-app.listen(process.env.PORT || 3000, () =>
-  console.log("Server running")
-);
+app.listen(3000, () => console.log("Server running"));
