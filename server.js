@@ -35,7 +35,9 @@ async function uploadToDrive(filePath, fileName) {
   });
   return response.data;
 }
-
+app.get("/", (req, res) => {
+  res.send("PAN Upload API is running 🚀");
+});
 // 🚀 API (ERPNext webhook)
 app.post("/upload-to-drive", async (req, res) => {
   try {
