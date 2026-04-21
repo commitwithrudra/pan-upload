@@ -57,27 +57,59 @@ async function uploadToDrive(filePath, fileName) {
   return response.data;
 }
 
-// API
+
 app.post("/upload-to-drive", async (req, res) => {
-  try {
-    console.log("BODY:", req.body);
+    try {
+        const { file_url, file_name } = req.body;
 
-    const { file_url, file_name } = req.body;
+        // 🔥 Convert to full URL
+        const fullUrl = `https://lvsmd.m.frappe.cloud${file_url}`;
 
-    const filePath = await downloadFile(file_url, file_name);
-    console.log("Downloaded:", filePath);
+        console.log("Downloading from:", fullUrl);
 
-    const result = await uploadToDrive(filePath, file_name);
-    console.log("Uploaded to Drive:", result.id);
+        // Download file
+        const response = await axios.get(fullUrl, {
+            responseType: "arraybuffer"
+        });
 
-    fs.unlinkSync(filePath);
+        const fileBuffer = response.data;
 
-    res.send("Uploaded to Drive ✅");
-  } catch (err) {
-    console.error(err);
-    res.status(500).send(err.message);
-  }
+        // 👉 Now upload this buffer to Google Drive
+        // (your existing drive code here)
+
+        res.send("Uploaded successfully ✅");
+
+    } catch (err) {
+        console.error(err.message);
+        res.status(500).send("Upload failed ❌");
+    }
 });
+
+// API
+// app.post("/upload-to-drive", async (req, res) => {
+//   try {
+//     console.log("BODY:", req.body);
+
+//     const { file_url, file_name } = req.body;
+
+//     const fullUrl = `https://lvsmd.m.frappe.cloud${file_url}`;
+
+//     console.log("Downloading from:", fullUrl);
+
+//     const filePath = await downloadFile(file_url, file_name);
+//     console.log("Downloaded:", filePath);
+
+//     const result = await uploadToDrive(filePath, file_name);
+//     console.log("Uploaded to Drive:", result.id);
+
+//     fs.unlinkSync(filePath);
+
+//     res.send("Uploaded to Drive ✅");
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).send(err.message);
+//   }
+// });
 
 app.get("/", (req, res) => {
   res.send("Server is running ✅");
