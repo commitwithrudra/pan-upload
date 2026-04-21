@@ -1,122 +1,88 @@
 const express = require("express");
-const fs = require("fs");
 const axios = require("axios");
 const { google } = require("googleapis");
 const mime = require("mime-types");
+const { Readable } = require("stream");
 
 const app = express();
 app.use(express.json());
 
-// ensure uploads folder exists
-if (!fs.existsSync("uploads")) {
-  fs.mkdirSync("uploads");
-}
-
-// Google Auth
+// 🔐 Google Auth
 const auth = new google.auth.GoogleAuth({
-  keyFile: "credentials.json",
+  keyFile: "credentials.json", // make sure this file exists on Render
   scopes: ["https://www.googleapis.com/auth/drive"],
 });
 
 const drive = google.drive({ version: "v3", auth });
 
-// Download file
-async function downloadFile(file_url, fileName) {
-  const fullUrl = "https://lvsmd.m.frappe.cloud" + file_url;
+// 📌 Replace with your actual folder ID
+const FOLDER_ID = "YOUR_FOLDER_ID";
 
-  const response = await axios({
-    url: fullUrl,
-    method: "GET",
-    responseType: "stream",
-  });
-
-  console.log("Download status:", response.status);
-  console.log("File size:", response.data.length);
-
-  const path = "./uploads/" + fileName;
-  const writer = fs.createWriteStream(path);
-
-  response.data.pipe(writer);
-
-  return new Promise((resolve, reject) => {
-    writer.on("finish", () => resolve(path));
-    writer.on("error", reject);
-  });
-}
-
-// Upload to Drive
-async function uploadToDrive(filePath, fileName) {
-  const response = await drive.files.create({
-    requestBody: {
-      name: fileName,
-      parents: ["YOUR_FOLDER_ID"], // 🔥 put your folder ID
-    },
-    media: {
-      mimeType: mime.lookup(filePath),
-      body: fs.createReadStream(filePath),
-    },
-  });
-
-  return response.data;
-}
-
-
+// 🚀 Main API
 app.post("/upload-to-drive", async (req, res) => {
-    try {
-        const { file_url, file_name } = req.body;
+  try {
+    console.log("BODY:", req.body);
 
-        // 🔥 Convert to full URL
-        const fullUrl = `https://lvsmd.m.frappe.cloud${file_url}`;
+    const { file_url, file_name } = req.body;
 
-        console.log("Downloading from:", fullUrl);
-
-        // Download file
-        const response = await axios.get(fullUrl, {
-            responseType: "arraybuffer"
-        });
-
-        const fileBuffer = response.data;
-
-        // 👉 Now upload this buffer to Google Drive
-        // (your existing drive code here)
-
-        res.send("Uploaded successfully ✅");
-
-    } catch (err) {
-        console.error(err.message);
-        res.status(500).send("Upload failed ❌");
+    if (!file_url || !file_name) {
+      return res.status(400).send("Missing file data ❌");
     }
+
+    // 🔗 Build full ERPNext file URL
+    const fullUrl = `https://lvsmd.m.frappe.cloud${file_url}`;
+    console.log("Downloading from:", fullUrl);
+
+    // ⬇️ Download file as buffer
+    const response = await axios.get(fullUrl, {
+      responseType: "arraybuffer",
+    });
+
+    if (response.status !== 200) {
+      throw new Error("Failed to download file");
+    }
+
+    const buffer = Buffer.from(response.data);
+    console.log("Buffer size:", buffer.length);
+
+    // 🧠 Detect MIME type
+    const mimeType = mime.lookup(file_name) || "application/octet-stream";
+
+    // ⬆️ Upload to Google Drive
+    const result = await drive.files.create({
+      requestBody: {
+        name: file_name,
+        parents: [FOLDER_ID],
+      },
+      media: {
+        mimeType: mimeType,
+        body: Readable.from(buffer),
+      },
+    });
+
+    console.log("✅ Uploaded to Drive");
+    console.log("File ID:", result.data.id);
+
+    // 🔗 Optional: return file link
+    const fileLink = `https://drive.google.com/file/d/${result.data.id}/view`;
+
+    res.send({
+      message: "Uploaded to Drive ✅",
+      fileId: result.data.id,
+      link: fileLink,
+    });
+
+  } catch (err) {
+    console.error("❌ ERROR:", err.message);
+    res.status(500).send("Upload failed ❌");
+  }
 });
 
-// API
-// app.post("/upload-to-drive", async (req, res) => {
-//   try {
-//     console.log("BODY:", req.body);
-
-//     const { file_url, file_name } = req.body;
-
-//     const fullUrl = `https://lvsmd.m.frappe.cloud${file_url}`;
-
-//     console.log("Downloading from:", fullUrl);
-
-//     const filePath = await downloadFile(file_url, file_name);
-//     console.log("Downloaded:", filePath);
-
-//     const result = await uploadToDrive(filePath, file_name);
-//     console.log("Uploaded to Drive:", result.id);
-
-//     fs.unlinkSync(filePath);
-
-//     res.send("Uploaded to Drive ✅");
-//   } catch (err) {
-//     console.error(err);
-//     res.status(500).send(err.message);
-//   }
-// });
-
+// 🟢 Health check
 app.get("/", (req, res) => {
   res.send("Server is running ✅");
 });
 
+// 🌐 Start server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log("Server running on", PORT));
