@@ -5,12 +5,10 @@
   "scripts": {
     "start": "node server.js"
   },
-  "dependencies": {
-    "axios": "^1.6.0",
-    "express": "^4.18.2",
-    "fs": "^0.0.1-security",
-    "googleapis": "^105.0.0",
-    "mime-types": "^2.1.35",
-    "multer": "^1.4.5"
+"dependencies": {
+  "axios": "^1.6.0",
+  "express": "^4.18.2",
+  "googleapis": "^105.0.0",
+  "mime-types": "^2.1.35"
   }
 }
