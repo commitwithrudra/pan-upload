@@ -58,8 +58,9 @@ app.post("/upload-to-drive", async (req, res) => {
         mimeType: mimeType,
         body: Readable.from(buffer),
       },
+      supportsAllDrives: true,        // ✅ REQUIRED
+      includeItemsFromAllDrives: true // ✅ REQUIRED
     });
-
     console.log("✅ Uploaded to Drive");
     console.log("File ID:", result.data.id);
 
