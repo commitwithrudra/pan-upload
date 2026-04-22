@@ -117,8 +117,8 @@ app.post("/upload-to-drive", async (req, res) => {
     console.log("✅ Uploaded successfully:", fileId);
 
     return res.json({
-      message: "Uploaded successfully ✅",
-      fileId,
+      // message: "Uploaded successfully ✅",
+      // fileId,
       link: `https://drive.google.com/file/d/${fileId}/view`,
     });
   } catch (err) {
