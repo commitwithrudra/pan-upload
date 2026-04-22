@@ -2,107 +2,75 @@ const express = require("express");
 const axios = require("axios");
 const { google } = require("googleapis");
 const mime = require("mime-types");
+const { Readable } = require("stream");
+const https = require("https");
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
 
-// 🔐 ENV CONFIG
+// ================== ENV CONFIG ==================
 const CLIENT_ID = process.env.CLIENT_ID;
 const CLIENT_SECRET = process.env.CLIENT_SECRET;
+const REDIRECT_URI = "https://developers.google.com/oauthplayground";
 const REFRESH_TOKEN = process.env.REFRESH_TOKEN;
-const REDIRECT_URI = process.env.REDIRECT_URI;
-const FOLDER_ID = process.env.FOLDER_ID;
-const OTHER_FOLDER_ID = process.env.OTHER_FOLDER_ID;
+const FOLDER_ID = process.env.FOLDER_ID; // Google Drive folder
 
-// 🔑 OAuth Client
+// ================== GOOGLE AUTH ==================
 const oauth2Client = new google.auth.OAuth2(
   CLIENT_ID,
   CLIENT_SECRET,
   REDIRECT_URI
 );
 
-// ✅ Use only refresh token (recommended way)
-oauth2Client.setCredentials({
-  refresh_token: REFRESH_TOKEN,
-});
+oauth2Client.setCredentials({ refresh_token: REFRESH_TOKEN });
 
-// 🔄 Token refresh handler (IMPORTANT)
-oauth2Client.on("tokens", (tokens) => {
-  if (tokens.access_token) {
-    console.log("🔑 New access token generated");
-  }
-  if (tokens.refresh_token) {
-    console.log("🔄 New refresh token received (save it!)");
-  }
-});
-
-// 📂 Google Drive instance
 const drive = google.drive({
   version: "v3",
   auth: oauth2Client,
 });
 
-// 🚀 Upload API
+// ================== HEALTH CHECK ==================
+app.get("/", (req, res) => {
+  res.send("🚀 Server is running...");
+});
+
+// ================== UPLOAD API ==================
 app.post("/upload-to-drive", async (req, res) => {
   try {
     const { file_url, file_name } = req.body;
 
-    if (!file_url || !file_name) {
-      return res.status(400).json({
-        error: "Missing file_url or file_name",
-      });
+    if (!file_url) {
+      return res.status(400).json({ error: "file_url is required" });
     }
 
-    const fullUrl = `https://lvsmd.m.frappe.cloud${file_url}`;
-    console.log("⬇️ Downloading:", fullUrl);
+    console.log("📥 Fetching file from:", file_url);
 
-    // 📥 Download file as stream
-    const response = await axios({
-      method: "GET",
-      url: fullUrl,
-      responseType: "stream",
+    // Fetch file from ERPNext
+    const response = await axios.get(file_url, {
+      responseType: "arraybuffer",
     });
 
-    // ❌ Stream error handler
-    response.data.on("error", (err) => {
-      console.error("❌ Stream error:", err.message);
-    });
+    const mimeType = mime.lookup(file_name) || "application/octet-stream";
 
-    const mimeType =
-      mime.lookup(file_name) ||
-      response.headers["content-type"] ||
-      "application/octet-stream";
+    const bufferStream = new Readable();
+    bufferStream.push(response.data);
+    bufferStream.push(null);
 
-    console.log("📦 MIME type:", mimeType);
-
-
-    let targetFolderId = OTHER_FOLDER_ID; // default fallback
-    
-    const name = file_name.toUpperCase();
-    
-    if (
-      name.startsWith("PAN_") ||
-      name.startsWith("AADHAR_") ||
-      name.startsWith("BANK_")
-    ) {
-      targetFolderId = FOLDER_ID; // main folder
-    }
-    
-    // ⬆️ Upload to Google Drive
-    const result = await drive.files.create({
+    // Upload to Google Drive
+    const driveRes = await drive.files.create({
       requestBody: {
-        name: file_name,
-        parents: [targetFolderId],
+        name: file_name || `file_${Date.now()}`,
+        parents: [FOLDER_ID],
       },
       media: {
-        mimeType,
-        body: response.data,
+        mimeType: mimeType,
+        body: bufferStream,
       },
     });
 
-    const fileId = result.data.id;
-    
-    // 2. MAKE FILE PUBLIC (IMPORTANT FIX)
+    const fileId = driveRes.data.id;
+
+    // Make file public
     await drive.permissions.create({
       fileId: fileId,
       requestBody: {
@@ -110,34 +78,45 @@ app.post("/upload-to-drive", async (req, res) => {
         type: "anyone",
       },
     });
-    
-    // 3. Generate link
-    const link = `https://drive.google.com/file/d/${fileId}/view`;
 
-    console.log("✅ Uploaded successfully:", fileId);
+    const publicUrl = `https://drive.google.com/file/d/${fileId}/view`;
+
+    console.log("✅ Uploaded:", publicUrl);
 
     return res.json({
-      // message: "Uploaded successfully ✅",
-      // fileId,
-      link: `https://drive.google.com/file/d/${fileId}/view`,
+      message: "Uploaded successfully ✅",
+      fileId: fileId,
+      link: publicUrl,
     });
-  } catch (err) {
-    console.error("❌ Upload Error:", err.response?.data || err.message);
-
+  } catch (error) {
+    console.error("❌ Upload Error:", error.message);
     return res.status(500).json({
       error: "Upload failed",
-      details: err.message,
+      details: error.message,
     });
   }
 });
 
-// 🟢 Health check
-app.get("/", (req, res) => {
-  res.send("Server is running ✅");
-});
+// ================== SELF PING (KEEP ALIVE) ==================
+const SELF_URL = process.env.SELF_URL;
 
-// 🌐 Start server
+function pingServer() {
+  if (!SELF_URL) return;
+
+  https
+    .get(SELF_URL, (res) => {
+      console.log(`🔁 Self ping: ${res.statusCode}`);
+    })
+    .on("error", (err) => {
+      console.error("❌ Ping failed:", err.message);
+    });
+}
+
+// Ping every 5 minutes
+setInterval(pingServer, 5 * 60 * 1000);
+
+// ================== START SERVER ==================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log("🚀 Server running on port", PORT);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
