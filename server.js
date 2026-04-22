@@ -101,6 +101,18 @@ app.post("/upload-to-drive", async (req, res) => {
     });
 
     const fileId = result.data.id;
+    
+    // 2. MAKE FILE PUBLIC (IMPORTANT FIX)
+    await drive.permissions.create({
+      fileId: fileId,
+      requestBody: {
+        role: "reader",
+        type: "anyone",
+      },
+    });
+    
+    // 3. Generate link
+    const link = `https://drive.google.com/file/d/${fileId}/view`;
 
     console.log("✅ Uploaded successfully:", fileId);
 
