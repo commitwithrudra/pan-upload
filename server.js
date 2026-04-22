@@ -12,6 +12,7 @@ const CLIENT_SECRET = process.env.CLIENT_SECRET;
 const REFRESH_TOKEN = process.env.REFRESH_TOKEN;
 const REDIRECT_URI = process.env.REDIRECT_URI;
 const FOLDER_ID = process.env.FOLDER_ID;
+const OTHER_FOLDER_ID = process.env.OTHER_FOLDER_ID;
 
 // 🔑 OAuth Client
 const oauth2Client = new google.auth.OAuth2(
@@ -74,11 +75,24 @@ app.post("/upload-to-drive", async (req, res) => {
 
     console.log("📦 MIME type:", mimeType);
 
+
+    let targetFolderId = OTHER_FOLDER_ID; // default fallback
+    
+    const name = file_name.toUpperCase();
+    
+    if (
+      name.startsWith("PAN_") ||
+      name.startsWith("AADHAR_") ||
+      name.startsWith("BANK_")
+    ) {
+      targetFolderId = FOLDER_ID; // main folder
+    }
+    
     // ⬆️ Upload to Google Drive
     const result = await drive.files.create({
       requestBody: {
         name: file_name,
-        parents: [FOLDER_ID],
+        parents: [targetFolderId],
       },
       media: {
         mimeType,
