@@ -7,75 +7,84 @@ const { Readable } = require("stream");
 const app = express();
 app.use(express.json());
 
-// 🔐 Google Auth
-const auth = new google.auth.GoogleAuth({
-  keyFile: "credentials.json", // make sure this file exists on Render
-  scopes: ["https://www.googleapis.com/auth/drive"],
+// 🔐 ENV CONFIG
+const CLIENT_ID = process.env.CLIENT_ID;
+const CLIENT_SECRET = process.env.CLIENT_SECRET;
+const REFRESH_TOKEN = process.env.REFRESH_TOKEN;
+const REDIRECT_URI = process.env.REDIRECT_URI;
+
+// 📁 Google Drive Folder ID (ONLY ONCE)
+const FOLDER_ID = process.env.FOLDER_ID;
+
+// 🔑 OAuth Client
+const oauth2Client = new google.auth.OAuth2(
+  CLIENT_ID,
+  CLIENT_SECRET,
+  REDIRECT_URI
+);
+
+oauth2Client.setCredentials({
+  refresh_token: REFRESH_TOKEN,
 });
 
-const drive = google.drive({ version: "v3", auth });
+// 📂 Drive Instance
+const drive = google.drive({
+  version: "v3",
+  auth: oauth2Client,
+});
 
-// 📌 Replace with your actual folder ID
-const FOLDER_ID = "1mFDnfbbSYRXJFuHeHKx6wiax2J2lnrEw";
-
-// 🚀 Main API
+// 🚀 Upload API
 app.post("/upload-to-drive", async (req, res) => {
   try {
-    console.log("BODY:", req.body);
-
     const { file_url, file_name } = req.body;
 
     if (!file_url || !file_name) {
-      return res.status(400).send("Missing file data ❌");
+      return res.status(400).json({ error: "Missing file_url or file_name" });
     }
 
-    // 🔗 Build full ERPNext file URL
     const fullUrl = `https://lvsmd.m.frappe.cloud${file_url}`;
-    console.log("Downloading from:", fullUrl);
+    console.log("⬇️ Downloading:", fullUrl);
 
-    // ⬇️ Download file as buffer
-    const response = await axios.get(fullUrl, {
-      responseType: "arraybuffer",
+    // ✅ Stream download (better than buffer)
+    const response = await axios({
+      method: "GET",
+      url: fullUrl,
+      responseType: "stream",
     });
 
-    if (response.status !== 200) {
-      throw new Error("Failed to download file");
-    }
+    const mimeType =
+      mime.lookup(file_name) || response.headers["content-type"] || "application/octet-stream";
 
-    const buffer = Buffer.from(response.data);
-    console.log("Buffer size:", buffer.length);
+    console.log("📦 MIME:", mimeType);
 
-    // 🧠 Detect MIME type
-    const mimeType = mime.lookup(file_name) || "application/octet-stream";
-
-    // ⬆️ Upload to Google Drive
+    // ⬆️ Upload to Drive
     const result = await drive.files.create({
       requestBody: {
         name: file_name,
         parents: [FOLDER_ID],
       },
       media: {
-        mimeType: mimeType,
-        body: Readable.from(buffer),
+        mimeType,
+        body: response.data,
       },
-      supportsAllDrives: true,        // ✅ REQUIRED
-      includeItemsFromAllDrives: true // ✅ REQUIRED
-    });
-    console.log("✅ Uploaded to Drive");
-    console.log("File ID:", result.data.id);
-
-    // 🔗 Optional: return file link
-    const fileLink = `https://drive.google.com/file/d/${result.data.id}/view`;
-
-    res.send({
-      message: "Uploaded to Drive ✅",
-      fileId: result.data.id,
-      link: fileLink,
+      supportsAllDrives: true, // important for shared drives
     });
 
+    const fileId = result.data.id;
+
+    console.log("✅ Uploaded:", fileId);
+
+    return res.json({
+      message: "Uploaded successfully ✅",
+      fileId,
+      link: `https://drive.google.com/file/d/${fileId}/view`,
+    });
   } catch (err) {
-    console.error("❌ ERROR:", err.message);
-    res.status(500).send("Upload failed ❌");
+    console.error("❌ Upload Error:", err.response?.data || err.message);
+    return res.status(500).json({
+      error: "Upload failed",
+      details: err.message,
+    });
   }
 });
 
@@ -86,4 +95,6 @@ app.get("/", (req, res) => {
 
 // 🌐 Start server
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Server running on", PORT));
+app.listen(PORT, () => {
+  console.log("🚀 Server running on port", PORT);
+});
